@@ -1,0 +1,78 @@
+# ---
+# jupyter:
+#   jupytext:
+#     text_representation:
+#       extension: .py
+#       format_name: percent
+#       format_version: '1.3'
+#       jupytext_version: 1.19.6
+#   kernelspec:
+#     display_name: Python 3 (ipykernel)
+#     language: python
+#     name: python3
+# ---
+
+# %% [markdown]
+# # Project 2
+
+# %% [markdown]
+# Welcome to the second NLP1 project. The goal of the second tutorial was to get you familiar with using pre-trained embeddings and moving towards a compositional encoder for text classification.
+#
+# Given the skills you have developed in the last week, you will now be applying them within the dataset and task you have chosen during Project 1. You will be applying hands-on the experiments you have already explored in the Tutorial 2, and taking a deeper dive: extending your experiments, trying different set ups, possibly considering different evaluation techniques and errors analyses, and tackling your own research questions. 
+#
+#
+# The week after the deadline, your TA will perform a short oral assessment of the skills and knowledge you acquired (make sure to check the official schedule for this), probing you to answer questions about what you learnt, about what you did and about why you did the things you did (as opposed to some reasonable alternatives) as well as pros and cons of your method, and so on. 
+
+# %% [markdown]
+# # Get to work!
+
+# %% [markdown]
+# 1. Find a word embedding model that is appropriate for your dataset. Think about the language, the kind of text you are working with. Find evidence that your choice is a good one: 
+#     * Can you tokenize your texts in a way coherent with the definition of a token in the embedding model?
+#     * Does the model's vocabulary give enough coverage to the words in your texts? etc.
+# 2. Explore what your chosen word embedding model captures. Some things you might consider: 
+#     * Is it good at representing interesting similarities (re to your choice of task)? J
+#     * Have you found task-specific evidence that it's better than some other reasonable alternative?
+#     * Do you know about limitations of this model?
+#     * Any limitations that you find particularly troubling for your task? 
+# 3. Experiment with the embed-and-pool approach.  
+#     * What design choices have meaningful impact in classification performance (eg, embedding size, architecture design, optimisation parameters), if any?
+#     * Is this better than what you could achieve last week? In other words, did pretrained embeddings add to your design?
+# 4. Experiment with a recurrent encoder (GRU or LSTM). 
+#     * What design choices have meaningful impact in classification performance, if any?
+#     * Did you investigate the impact of data size, embedding parameters (trained or not, fixed or trainable, etc)?
+#     * Did you struggle with over-fitting?
+#     * How far can this approach go? Are you able to improve meaningfully on embed-and-pool?
+# 5. We make decisions under uncertainty all the time, are you gathering enough information to substantiate your choices? Various things can lead to small differences in results, and these differences are not always consistent. Here are some things to think about:
+#     * How did you structure you hyperparameter search?
+#     * Are you keeping an eye on experimental variance?
+# 6. Experiment with error analysis and try to discover what characteristics of input texts are predictive of performance differences across major design choices. 
+#     * What analysis features did you come up with?
+#     * Which ones did you manage to test and how did that go?
+#     * What would you prioritise in the future in order to improve your systems?
+#
+# Be mindful that you will be using your experiments to write up your final blog, so make sure your code is clean and neat!
+#
+# If you are unsure about anything, ask your TA! They are always happy to help you! Happy coding! :)
+
+# %% [markdown]
+# # Tips
+
+# %% [markdown]
+# ## Pretrained embedding models
+
+# %% [markdown]
+# We will post a list with some options for you. 
+
+# %% [markdown]
+# ## Features for analysis
+
+# %% [markdown]
+# Features that you can interpret as an aspect of _complexity_ in light of your task's goals.
+#
+# - length
+# - presence of rare/common words, including unknown words
+# - syntactic features (like parts-of-speech, syntactic complexity, syntactic voice, presence of negation, etc.)
+# - semantic features (eg, the average similarity of the text to training documents or some curated set of training documents, presence of words in certain semantic classes, etc.)
+# - task-specific features (eg, 
+# - model-specific features (eg, predicted label, probability assigned to predicted label, number of parameters or layers or some other model descriptor)

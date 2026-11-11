@@ -1,0 +1,8 @@
+__pycache__/
+*.pyc
+.ipynb_checkpoints/
+.idea/
+.venv/
+.DS_Store
+CLAUDE.local.md
+part2/glove.2024.wikigiga.50d.zip
