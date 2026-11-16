@@ -58,7 +58,7 @@ results_folder = Path("./results")
 results_folder.mkdir(parents=True, exist_ok=True) 
 results_folder
 
-# %% [markdown]
+# %% [markdown] jp-MarkdownHeadingCollapsed=true
 # # Word Embeddings
 
 # %% [markdown]
@@ -476,7 +476,7 @@ trained_emb_model.embed_word('person')
 # %% [markdown]
 # Next we will play a bit of word embeddings in an attempt to see that they indeed do contain useful structure. You will also see that they are not free of problems.
 
-# %% [markdown]
+# %% [markdown] jp-MarkdownHeadingCollapsed=true
 # ## Exercise: Structure in Word Embeddings
 
 # %% [markdown]
@@ -557,7 +557,7 @@ adjusted_rand_score(y, labels_hat)
 #
 # Cooccurence can be made directional or or considered within a phrase or clause or centered around a relation to a noun (modifier/verb) or verb (acted on/upon/by).
 
-# %% [markdown]
+# %% [markdown] jp-MarkdownHeadingCollapsed=true
 # ## Exercises: Similarity and Analogies
 
 # %% [markdown]
@@ -572,14 +572,14 @@ adjusted_rand_score(y, labels_hat)
 # %% [markdown]
 # We suggest you complete these functions as a first step towards your solution, but you can also choose to organise your code differently.
 
-# %% jupyter={"outputs_hidden": true, "source_hidden": true}
+# %%
 def cos_similarity(u, v):  
     """
     Return the cosine similarity (a real number) of the two words in the embedding space of our model.
     """      
-    raise NotImplementError("Implement me!")
+    return (u @ v)/(np.linalg.norm(u)*np.linalg.norm(v))
 
-def topk_ids(v, E, k=10):    
+def topk_ids(v, E, vocab, k=10):    
     """
     word embedding: a D-dimensional vector
     E: our model's embedding matrix as a numpy array of shape [V, D]
@@ -588,41 +588,73 @@ def topk_ids(v, E, k=10):
     Return a list with the k word ids that are nearest to the input word embedding v
      in embedding space according to cosine similarity. 
     """   
-    raise NotImplementedError("Implement me!")
+    norms = np.linalg.norm(E,axis=1,keepdims=True)
+    E_unit = np.divide(E, norms, out=np.zeros_like(E), where=norms > 0)
+    sim = (E_unit @ v) / np.linalg.norm(v)
+    idx = np.argpartition(-sim, k)[:k]
+    return vocab[idx[np.argsort(-sim[idx])]]
 
 
-# %% jupyter={"outputs_hidden": true, "source_hidden": true}
-try:
-    from part2 import solutions
-except ImportError:
-    print("You need your own implementation of cos_similarity")
-else:
-    print("# Similarity")
-    solutions.demo_similarity(['person', 'human', 'place', 'city', 'car'], trained_emb_model)    
-    print("\n# Top-k")
-    solutions.demo_topk(['woman', 'man', 'king', 'queen', 'professor', 'nurse', 'positive'], 10, trained_emb_model)        
-    print("\n# Analogies")
-    for a, b, c in [('king', 'man', 'woman'), ('professor', 'man', 'woman'), ('nurse', 'man', 'woman')]:
-        solutions.demo_analogy(a, b, c, 10, trained_emb_model)
-        solutions.demo_analogy(a, c, b, 10, trained_emb_model)
-        print()
+# %%
+seq = ['person', 'human', 'place', 'city', 'car']
+embeddings = dict(zip(seq, trained_emb_model.embed_sequence(seq), strict=True))
+
+# %%
+# (a)
+import pandas as pd
+out = []
+for s1,s2 in itertools.combinations(seq, 2):
+    out.append((s1,s2, cos_similarity(embeddings[s1], embeddings[s2])))
+df = pd.DataFrame(out, columns=['word1','word2', 'similarity'])
+df
+
+# %%
+E = np.vstack(trained_emb_model.embed_sequence(trained_emb_model.vocab.words))
+vocab = np.array(trained_emb_model.vocab.words)
+
+# %%
+for w in ['woman', 'man', 'king', 'queen', 'professor', 'nurse', 'positive']:
+    v = trained_emb_model.embed_word(w)
+    print(w, topk_ids(v, E, vocab))
+
+# %%
+for a, b, c in [('king', 'man', 'woman'), ('professor', 'man', 'woman'), ('nurse', 'man', 'woman')]:
+    u = trained_emb_model.embed_word(a) - trained_emb_model.embed_word(b) + trained_emb_model.embed_word(c)
+    print(f'{a} is to {b} as {c} is to', topk_ids(u, E, vocab))
+    v = trained_emb_model.embed_word(a) + trained_emb_model.embed_word(b) - trained_emb_model.embed_word(c)
+    print(f'{a} is to {c} as {b} is to', topk_ids(v, E, vocab))
+    print('\n')
 
 
 # %% [markdown]
 # ### Questions
 
+# %% [raw]
+# vocab = np.array(trained_emb_model.vocab.words)
+# vocab = vocab[np.unique(np.random.randint(0,len(vocab),size=10))]
+# E = np.vstack(trained_emb_model.embed_sequence(trained_emb_model.vocab.words))
+# norms = np.linalg.norm(E,axis=1,keepdims=True)
+# E_unit = np.divide(E, norms, out=np.zeros_like(E), where=norms > 0)
+# S = E_unit @ E_unit.T
+# S
+
 # %% [markdown]
 # 1. Reflect on your observations in exercises (1; cosine), (2; top-k) and (3; analogies). Can you explain what aspect of the model's training procedure might justify the observations you made?
-# 2. Accepting that a certain embedding space contains information that's coherent with human assessment of lexical similarity, why should _cosine_ between two vectors in this space, as opposed to some other way to map two vectors to a single real number,  happen to be useful? 
+#
+# Model is trained on cooccurence in natural text which reflects historical human biases.
+#
+# 2. Accepting that a certain embedding space contains information that's coherent with human assessment of lexical similarity, why should _cosine_ between two vectors in this space, as opposed to some other way to map two vectors to a single real number,  happen to be useful?
+#
+# It describes the angle between two vectors, so if angle = 0 (vectors overlap) then angle should be zero and cosine similarity maximal. If they are opposite they will have a distance of -1.
 
-# %% [markdown] jp-MarkdownHeadingCollapsed=true
+# %% [markdown]
 # # Text Classification Revisited
 
 # %% [markdown]
 # In this section we will revisit text classification with an MLP-parameterised softmax regressor. 
 # First, we will tackle the problem with a fixed encoder. Then, we will turn to a trainable and compositional encoder.
 
-# %% [markdown]
+# %% [markdown] jp-MarkdownHeadingCollapsed=true
 # ## Tokenizer
 
 # %% [markdown]
@@ -634,28 +666,45 @@ else:
 # 1. As usual, the tokenizer segments a given string into a list of tokens
 # 2. Additional, the tokenizer also maintains a vocabulary of known symbols and is able to convert tokens to unique 0-based identifiers.
 
-# %% jupyter={"outputs_hidden": true, "source_hidden": true}
+# %%
+# import nltk
+# nltk.download('punkt_tab')
+# nltk.download('stopwords')
+
+# %%
 class Tokenizer:
+    def __init__(self, compositional, vocab):
+        """
+        inputs: 
+            - compositional (true if tokenizer used in compositional encoder, false o.w.)
+            - vocab: vocabulary with embedding
+        """
+        self.tokenizer_for_bow = part2.clslib.BasicTokenizer(
+            lowercase=True, 
+            remove_punct=not compositional, 
+            remove_stopwords=not compositional, 
+            language='english',
+            vocab=vocab
+        )
+
     def tokens(self, text: str) -> list:
         """Tokenize as a list of string tokens"""
-        raise NotImplementedError("Implement me in subclass")
+        return self.tokenizer_for_bow.tokens(text)
+        
     def ids(self, text: str) -> list:
         """Tokenize as a list of token ids"""
-        raise NotImplementedError("Implement me in subclass")
+        return self.tokenizer_for_bow.ids(text)
 
 
 # %% [markdown]
 # Our basic tokenizer uses `nltk` (you can check the docstring below, and the code in the repo):
-
-# %% jupyter={"outputs_hidden": true, "source_hidden": true}
-# part2.clslib.BasicTokenizer?
 
 # %% [markdown]
 # This is how we use the helper class.
 #
 # BoW-style encoders cannot make very good use of punctuation and stopwords, so we discard them.
 
-# %% jupyter={"outputs_hidden": true, "source_hidden": true}
+# %%
 from tabulate import tabulate
 
 demo_texts = ['Dog bites man.', 'This tutorial is offered as part of NLP1, an MSc level course in the AI programme of the UvA.']
@@ -676,7 +725,7 @@ for text in demo_texts:
 # %% [markdown]
 # A compositional encoder on the other hand can make use of everything that's in the sequence, so we keep punctuation and stopwords:
 
-# %% jupyter={"outputs_hidden": true, "source_hidden": true}
+# %%
 tokenizer_for_rnn = part2.clslib.BasicTokenizer(
     lowercase=True, 
     remove_punct=False,
@@ -696,7 +745,7 @@ for text in demo_texts:
 # %% [markdown]
 # Now let's use our tokenizer and our pretrained embedding vectors to design text encoders.
 
-# %% [markdown]
+# %% [markdown] jp-MarkdownHeadingCollapsed=true
 # ### Embed and Pool
 
 # %% [markdown]
@@ -722,7 +771,7 @@ for text in demo_texts:
 #
 # Suppose we are batching three sequences of token ids: `[1, 2, 3]`, `[6, 2]` and `[2, 1, 4, 5]`. As they differ in length, we use the following trick to batch them into a single tensor:
 
-# %% jupyter={"outputs_hidden": true, "source_hidden": true}
+# %%
 ex_batch = torch.tensor(
     [
         [1, 2, 3, 0],
@@ -738,13 +787,13 @@ ex_batch
 #
 # Here we show a quick demonstration of what we mean by (b).
 
-# %% jupyter={"outputs_hidden": true, "source_hidden": true}
-torch.sum(ex_batch.ne(0), dim=-1) == torch.tensor([3, 2, 4])
+# %%
+torch.sum(ex_batch.ne(0), dim=-1) == torch.tensor([3, 2, 4]) # true length of seq
 
 # %% [markdown]
 # Batching is such a common operation that torch offers helper code for it, see below.
 
-# %% jupyter={"outputs_hidden": true, "source_hidden": true}
+# %%
 from torch.nn.utils.rnn import pad_sequence   
 
 def collate_sequences(sequences, padding_value=0):    
@@ -761,7 +810,7 @@ def collate_sequences(sequences, padding_value=0):
 # %% [markdown]
 # Here is a demo:
 
-# %% jupyter={"outputs_hidden": true, "source_hidden": true}
+# %%
 collate_sequences([tokenizer_for_bow.ids(text) for text in demo_texts], tokenizer_for_bow.vocab.index(trained_emb_model.pad_token))
 
 # %% [markdown]
@@ -769,7 +818,7 @@ collate_sequences([tokenizer_for_bow.ids(text) for text in demo_texts], tokenize
 #
 # **Suggested exercise:** complete the class below and compare your implementation to ours.
 
-# %% jupyter={"outputs_hidden": true, "source_hidden": true}
+# %%
 import torch
 import torch.nn as nn
 
@@ -807,6 +856,10 @@ class EmbedAndPoolEncoder(nn.Module):
     def enc_dim(self):
         return self.embedding.embedding_dim
 
+    @property
+    def pad_idx(self):
+        return self.embedding.padding_idx
+
     def forward(self, x):     
         """
         Encodes each sequence in the batch as a single vector of size emb_dim.
@@ -815,13 +868,18 @@ class EmbedAndPoolEncoder(nn.Module):
         """
         # [..., max_seq_length, emb_dim]
         e = self.embedding(x)  
-        raise NotImplementedError("How about you try to implement the rest of this method?")
+        if self.average_pool:
+            denom = torch.sum(x.ne(self.pad_idx), dim=-1, keepdim=True).clamp_min(1) # num words
+        else:
+            denom = 1
+        h = e.sum(dim=-2) / denom
+        return h
 
 
 # %% [markdown]
 # If you implement it yourself, you can compare yours to ours.
 
-# %% jupyter={"outputs_hidden": true, "source_hidden": true}
+# %%
 def test_embed_and_pool(emb_vectors, pad_id, tokenizer):
     with torch.random.fork_rng(devices=[]):
         torch.manual_seed(42)
@@ -830,7 +888,7 @@ def test_embed_and_pool(emb_vectors, pad_id, tokenizer):
             freeze_embeddings=True, 
             padding_idx=pad_id
         )
-        your_h = your_embed_and_pool_encoder(torch.tensor([tokenizer.ids('Dog bites man.')]))
+        your_h = your_embed_and_pool_encoder(torch.tensor(tokenizer.ids('Dog bites man.')))
     with torch.random.fork_rng(devices=[]):
         torch.manual_seed(42)
         our_embed_and_pool_encoder = part2.clslib.EmbedAndPoolEncoder(
@@ -838,12 +896,11 @@ def test_embed_and_pool(emb_vectors, pad_id, tokenizer):
             freeze_embeddings=True, 
             padding_idx=pad_id
         )
-        our_h = our_embed_and_pool_encoder(torch.tensor([tokenizer.ids('Dog bites man.')]))
-
+        our_h = our_embed_and_pool_encoder(torch.tensor(tokenizer.ids('Dog bites man.')))
     assert torch.allclose(your_h, our_h)
 
 
-# %% jupyter={"outputs_hidden": true, "source_hidden": true}
+# %%
 try: 
     test_embed_and_pool(
         trained_emb_model.vectors, 
@@ -856,20 +913,17 @@ except NotImplementedError:
 # %% [markdown]
 # A little demo using our own implementation. 
 
-# %% jupyter={"outputs_hidden": true, "source_hidden": true}
+# %%
 pooled_emb_encoder = part2.clslib.EmbedAndPoolEncoder(
     torch.tensor(trained_emb_model.vectors, dtype=torch.float32), 
     freeze_embeddings=True, 
     padding_idx=trained_emb_model.vocab.index(trained_emb_model.pad_token)
 )
 
-# %% jupyter={"outputs_hidden": true, "source_hidden": true}
-pooled_emb_encoder(torch.tensor([tokenizer_for_bow.ids('Dog bites man.')]))
-
 # %% [markdown]
 # Remember one of the limitations of BoW-type encoders? This encoder uses word representations that are dense and pretrained but the result still is a BoW-type encoder.
 
-# %% jupyter={"outputs_hidden": true, "source_hidden": true}
+# %%
 torch.allclose(
     pooled_emb_encoder(torch.tensor([tokenizer_for_bow.ids('Dog bites man.')])),
     pooled_emb_encoder(torch.tensor([tokenizer_for_bow.ids('Man bites dog.')])),
@@ -878,7 +932,10 @@ torch.allclose(
 # %% [markdown]
 # Let's see that our batching function pads things correctly:
 
-# %% jupyter={"outputs_hidden": true, "source_hidden": true}
+# %%
+torch.stack([pooled_emb_encoder(torch.tensor(tokenizer_for_bow.ids(text))) for text in demo_texts])
+
+# %%
 torch.allclose(
     # stack the encodings, computed in sequence
     torch.stack([pooled_emb_encoder(torch.tensor(tokenizer_for_bow.ids(text))) for text in demo_texts]),
@@ -1149,7 +1206,7 @@ not torch.allclose(lstm_sr.forward(torch.tensor([tokenizer_for_rnn.ids('dog bite
 # %% [markdown]
 # We are now ready to experiment with these models.
 
-# %% [markdown] jp-MarkdownHeadingCollapsed=true
+# %% [markdown]
 # # Experiment
 
 # %% [markdown]
@@ -1505,7 +1562,7 @@ df
 #
 # Below, we show how to "fit" the model via MCMC. For features we use the concatenation of a 4-dimensional one-hot encoding of the predicted label (not the observed label, the predicted one) and a 4-dimensional vector of continuous features from textstat. The implementation should be fine with many more features, but, if you have soooo many features that this is prohibitively slow, we recommend you to turn to sklearn LogisticRegression instead (as efficient BDA requires more time and more technical knowledge than we can cover in this course).
 
-# %% jupyter={"outputs_hidden": true, "source_hidden": true}
+# %% jupyter={"outputs_hidden": true}
 # Run with your inputs.
 mcmc = part2.analysis.fit_bda_model(
     num_systems=len(systems), 
