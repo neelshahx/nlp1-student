@@ -625,7 +625,6 @@ for a, b, c in [('king', 'man', 'woman'), ('professor', 'man', 'woman'), ('nurse
     print(f'{a} is to {c} as {b} is to', topk_ids(v, E, vocab))
     print('\n')
 
-
 # %% [markdown]
 # ### Questions
 
@@ -654,7 +653,7 @@ for a, b, c in [('king', 'man', 'woman'), ('professor', 'man', 'woman'), ('nurse
 # In this section we will revisit text classification with an MLP-parameterised softmax regressor. 
 # First, we will tackle the problem with a fixed encoder. Then, we will turn to a trainable and compositional encoder.
 
-# %% [markdown] jp-MarkdownHeadingCollapsed=true
+# %% [markdown]
 # ## Tokenizer
 
 # %% [markdown]
@@ -667,9 +666,10 @@ for a, b, c in [('king', 'man', 'woman'), ('professor', 'man', 'woman'), ('nurse
 # 2. Additional, the tokenizer also maintains a vocabulary of known symbols and is able to convert tokens to unique 0-based identifiers.
 
 # %%
-# import nltk
-# nltk.download('punkt_tab')
-# nltk.download('stopwords')
+import nltk
+nltk.download('punkt_tab')
+nltk.download('stopwords')
+
 
 # %%
 class Tokenizer:
@@ -745,7 +745,7 @@ for text in demo_texts:
 # %% [markdown]
 # Now let's use our tokenizer and our pretrained embedding vectors to design text encoders.
 
-# %% [markdown] jp-MarkdownHeadingCollapsed=true
+# %% [markdown]
 # ### Embed and Pool
 
 # %% [markdown]
@@ -944,7 +944,7 @@ torch.allclose(
 )
 
 
-# %% [markdown] jp-MarkdownHeadingCollapsed=true
+# %% [markdown]
 # ### RNN Encoder
 
 # %% [markdown]
@@ -1110,20 +1110,76 @@ print(tabulate(list(zip(toy_texts, np_and_round(toy_pool_enc(toy_batch)), np_and
 # * you might know the regularisation technique called `dropout`, well for recurrent models the typical dropout you know (randomly zeroing out units before a linear transformation) cannot be applied to the internal hidden states because the recurrence will lead to the complete destruction of any signal as sequence length increases; there are two options that are more theoretically justified: dropout with a fixed mask across all steps (rather than independently resampled in each step) and something called _word dropout_ (dropout at the level of inputs to the recurrent model), the former is rarely supported by NN packages (like torch), the latter is demonstrated in our own implementation `part2.clslib.LSTMEncoder` (it's worth learning from it).
 #
 
-# %% jupyter={"outputs_hidden": true, "source_hidden": true}
+# %%
 toy_lstm_enc = part2.clslib.LSTMEncoder(2, embedding_matrix=toy_matrix, padding_idx=0, freeze_embeddings=True)
 
-# %% jupyter={"outputs_hidden": true, "source_hidden": true}
-toy_lstm_enc(toy_batch)
+# %%
+toy_batch
 
+# %%
+toy_lstm_enc(toy_batch)
 
 # %% [markdown]
 # **Suggested exercise:** Using our LSTMEncoder as a guide, try implementing a _bidirectional_ recurrent encoder. See that `torch.nn.LSMT` has a `bidirectional` argument (have a look at the documentation to understand what `torch.nn.LSTM` returns via its forward method in this case):
 
-# %% jupyter={"outputs_hidden": true, "source_hidden": true}
-# # torch.nn.LSTM?
+# %%
+from torch.nn.utils.rnn import pack_padded_sequence 
 
-# %% [markdown] jp-MarkdownHeadingCollapsed=true
+class BiLSTMEncoder(nn.Module):
+    def __init__(self, hidden_size, embedding_matrix):
+        """
+        hidden_size: size of the recurrent state
+        embedding_matrix: word vectors
+        """
+        super().__init__()
+        vocab_size, embedding_dim = embedding_matrix.shape
+        self.embedding = nn.Embedding.from_pretrained(
+            embedding_matrix, 
+            freeze=True,
+            padding_idx=0
+        )
+        self.hidden_size = hidden_size
+        self.lstm = nn.LSTM(
+            input_size=embedding_dim, 
+            hidden_size=hidden_size,
+            num_layers=1,
+            batch_first=True,
+            bidirectional=True
+        )
+
+    @property
+    def enc_dim(self):
+        return 2*self.hidden_size
+
+    @property
+    def pad_idx(self):
+        return self.embedding.padding_idx
+
+    def forward(self, x):
+        """
+        Encode each sequence in the batch into a single 2H-dimensional vector.
+        
+        x: a batch of sequences of token ids [B, max_seq_len]
+        """
+        # [...,max_seq_len, emb_dim]
+        embedded = self.embedding(x)   
+        valid = x.ne(self.embedding.padding_idx)
+        # [..., max_seq_len] this is necessary for packing
+        lengths = torch.sum(valid, dim=-1)
+        # torch loops over sequences, padded in / padded out
+        packed = pack_padded_sequence(embedded, lengths.cpu(), batch_first=True, enforce_sorted=False)
+        output, (hidden, cell) = self.lstm(packed)
+        final_hidden = torch.concat([hidden[-2], hidden[-1]], axis=-1)
+        return final_hidden        
+
+
+
+# %%
+toy_lstm_enc = BiLSTMEncoder(2, embedding_matrix=toy_matrix)
+toy_lstm_enc(toy_batch).shape
+
+
+# %% [markdown]
 # ## Softmax Regressor
 
 # %% [markdown]
@@ -1139,15 +1195,14 @@ toy_lstm_enc(toy_batch)
 #
 # Let's implement this in torch.
 
-# %% jupyter={"outputs_hidden": true, "source_hidden": true}
+# %%
 class SoftmaxRegressor(nn.Module):
     """
-    This is a softmax regressor, 
-     it works with encoded text h(x) as input.
+    This is a softmax regressor, it works with encoded text h(x) as input.
     The map from h(x) to outputs uses an MLP.
 
     One important detail: for numerical stability the output is not softmax-activitate, 
-     rather, it is logsoftmax-activated. This means the outputs are log prob masses, not prob masses.
+    rather, it is logsoftmax-activated. This means the outputs are log prob masses, not prob masses.
     """
     def __init__(self, hidden_size1, hidden_size2, num_classes, encoder: nn.Module):
         """
@@ -1158,21 +1213,31 @@ class SoftmaxRegressor(nn.Module):
         """
         super().__init__()
         self.encoder = encoder      
-        self.num_classes = num_classes
-        raise NotImplementedError("Do you want to try and implement it yourself?")
+        self.num_classes = num_classes,
+        self.net = nn.Sequential(
+            nn.Linear(encoder.enc_dim, hidden_size1), 
+            nn.Tanh(),
+            nn.Linear(hidden_size1, hidden_size2),
+            nn.Tanh(),
+            nn.Linear(hidden_size2, num_classes),
+            nn.LogSoftmax(dim=-1)
+        )
+            
 
     def forward(self, x):  
         """
         for each sequence in the batch, encode it, then map the result to log probs for the possible classes
         return a tensor with shape (batch_size, num_classes) of log probs
         """
-        raise NotImplementedError("Do you want to try and implement it yourself?")
+        h_x = self.encoder(x)
+        logits = self.net.forward(h_x)
+        return torch.nn.LogSoftmax()(logits)
 
 
 # %% [markdown]
 # As before, you can compare your implementation to ours.
 
-# %% jupyter={"outputs_hidden": true, "source_hidden": true}
+# %%
 def test_softmax_regressor(encoder, num_classes, tokenizer):
     with torch.random.fork_rng(devices=[]):
         torch.manual_seed(42)
@@ -1182,25 +1247,21 @@ def test_softmax_regressor(encoder, num_classes, tokenizer):
         torch.manual_seed(42)
         our_sr = part2.clslib.SoftmaxRegressor(10, 10, num_classes, encoder)
         our_log_probs = our_sr(torch.tensor([tokenizer.ids('Dog bites man.')]))
-
     assert torch.allclose(your_log_probs, our_log_probs)
 
 
-# %% jupyter={"outputs_hidden": true, "source_hidden": true}
-try:    
-    test_softmax_regressor(part2.clslib.EmbedAndPoolEncoder(torch.tensor(trained_emb_model.vectors, dtype=torch.float32)), 4, tokenizer_for_bow)
-except NotImplementedError:
-    print("Implement SoftmaxRegressor or continue to our own demo.")
+# %%
+test_softmax_regressor(part2.clslib.EmbedAndPoolEncoder(torch.tensor(trained_emb_model.vectors, dtype=torch.float32)), 4, tokenizer_for_bow)
 
 # %% [markdown]
 # The demo uses our own code.
 
-# %% jupyter={"outputs_hidden": true, "source_hidden": true}
+# %%
 bow_sr = part2.clslib.SoftmaxRegressor(50, 50, 4, part2.clslib.EmbedAndPoolEncoder(torch.tensor(trained_emb_model.vectors, dtype=torch.float32)))
 # embed-and-pool makes the two texts identical, hence their conditional log probs cannot differ
 torch.allclose(bow_sr.forward(torch.tensor([tokenizer_for_bow.ids('dog bites man')])), bow_sr.forward(torch.tensor([tokenizer_for_bow.ids('man bites dog')])))
 
-# %% jupyter={"outputs_hidden": true, "source_hidden": true}
+# %%
 # LSTMs can arrive at different encodings for these two texts, hence their conditional log probs differ
 lstm_sr = part2.clslib.SoftmaxRegressor(50, 50, 4, part2.clslib.LSTMEncoder(50, torch.tensor(trained_emb_model.vectors, dtype=torch.float32)))
 not torch.allclose(lstm_sr.forward(torch.tensor([tokenizer_for_rnn.ids('dog bites man')])), lstm_sr.forward(torch.tensor([tokenizer_for_rnn.ids('man bites dog')])))
@@ -1208,7 +1269,7 @@ not torch.allclose(lstm_sr.forward(torch.tensor([tokenizer_for_rnn.ids('dog bite
 # %% [markdown]
 # We are now ready to experiment with these models.
 
-# %% [markdown] jp-MarkdownHeadingCollapsed=true
+# %% [markdown]
 # # Experiment
 
 # %% [markdown]
@@ -1217,7 +1278,7 @@ not torch.allclose(lstm_sr.forward(torch.tensor([tokenizer_for_rnn.ids('dog bite
 # %% [markdown]
 # This is re-using the code from the first tutorial to load and prepare our training and validation data.
 
-# %% jupyter={"outputs_hidden": true, "source_hidden": true}
+# %%
 from datasets import load_dataset
 
 agnews_outcome_space = part1.clslib.NamedClasses(['world', 'sports', 'business', 'tech/sci-fi'])
@@ -1230,7 +1291,7 @@ print(dataset)
 # %% [markdown]
 # An example from the training data:
 
-# %% jupyter={"outputs_hidden": true, "source_hidden": true}
+# %%
 print("Text:", dataset["train"]["text"][0])
 print("Gold label (id):", dataset["train"]["label"][0])
 print("Gold label (name):", agnews_outcome_space.name(dataset["train"]["label"][0]))
@@ -1238,7 +1299,7 @@ print("Gold label (name):", agnews_outcome_space.name(dataset["train"]["label"][
 # %% [markdown]
 # As in this tutorial we study a number of designs, we use cross-validation to obtain more reliable estimates of their merits in classification.
 
-# %% jupyter={"outputs_hidden": true, "source_hidden": true}
+# %%
 # %%time
 my_seeds = [0] # [0, 3, 5] # add more seeds here for multiple runs of cross validation, eg. [0, 3, 5]  
 num_folds = 5  # more makes each cross validation run more statistically informative, but it can get slow
@@ -1257,16 +1318,16 @@ for seed in my_seeds:
 # %% [markdown]
 # We will not be using the test set `dataset["test"]` for most of this tutorial, but we already split it in a `devtest` set (for some analysis at the end) and its complement (as an unseen dataset).
 
-# %% jupyter={"outputs_hidden": true, "source_hidden": true}
+# %%
 len(dataset["test"]["text"])
 
-# %% jupyter={"outputs_hidden": true, "source_hidden": true}
+# %%
 my_test_sets = []
 devtest_size = 100 * len(agnews_outcome_space)
 for seed in my_seeds:
     my_test_sets.append(part1.experiment.split_test_devtest(zip(dataset["test"]["text"], dataset["test"]["label"]), devtest_size, seed=seed))
 
-# %% jupyter={"outputs_hidden": true, "source_hidden": true}
+# %%
 my_test_sets[0].keys(), len(my_test_sets[0]['devtest']), len(my_test_sets[0]['test'])
 
 # %% [markdown]
@@ -1282,7 +1343,7 @@ my_test_sets[0].keys(), len(my_test_sets[0]['devtest']), len(my_test_sets[0]['te
 #
 # First, we demo the continuous BoW model:
 
-# %% jupyter={"outputs_hidden": true, "source_hidden": true}
+# %%
 metrics, best_epoch = part2.experiment.train(
     my_cross_validation_sets[0][0]['training'], 
     my_cross_validation_sets[0][0]['validation'], 
@@ -1293,7 +1354,7 @@ metrics, best_epoch = part2.experiment.train(
     enc_type='embed-and-pool', 
     regressor_kwargs={'hidden_size1': 50, 'hidden_size2': 50, 'dropout': 0.1},
     opt_kwargs={'learning_rate': 1e-3, 'weight_decay': 1e-4, 'batch_size': 64, 'num_epochs': 20},    
-    device='cuda' #'cpu'
+    device='cpu'
 )
 #Statistics for the best epoch
 best_epoch_metrics = metrics[best_epoch]
@@ -1304,7 +1365,7 @@ print(f"Validation accuracy: {best_epoch_metrics['val_metrics']['accuracy']}")
 # %% [markdown]
 # And here we demo the LSTM model. This is quite a bit slower on CPU; if you are struggling with GPU access, we suggest you subset your data so you can progress through the tutorial in real time during the live session, but for full experiments and for your project you will need to move to Snellius.
 
-# %% jupyter={"outputs_hidden": true, "source_hidden": true}
+# %%
 metrics, best_epoch = part2.experiment.train(
     my_cross_validation_sets[0][0]['training'], 
     my_cross_validation_sets[0][0]['validation'], 
@@ -1316,7 +1377,7 @@ metrics, best_epoch = part2.experiment.train(
     enc_kwargs={'freeze_embeddings': True, 'hidden_size': 20, 'word_dropout': 0.1},
     regressor_kwargs={'hidden_size1': 50, 'hidden_size2': 50, 'dropout': 0.1},
     opt_kwargs={'learning_rate': 1e-3, 'weight_decay': 1e-4, 'batch_size': 20, 'num_epochs': 20},        
-    device='cuda' #'cpu'
+    device='cpu'
 )
 #Statistics for the best epoch
 best_epoch_metrics = metrics[best_epoch]
@@ -1329,7 +1390,7 @@ print(f"Validation accuracy: {best_epoch_metrics['val_metrics']['accuracy']}")
 #
 # **Data size.** A complex enough task is simply beyond the continuous BoW model, so, in principle, the recurrent encoder model should be superior; if your intuition is that your task is complex enough (most are) and still the recurrent model is lagging behind, you might simply not have enough data to fit a good version of a larger / more complex architecture. Of course, this is a hypothesis, and to be sure you would need to test it. It is a reasonable hypothesis because we are training the architecture mostly from scratch (except for the word embeddings). 
 #
-# **Overfitting.** Related to data size, you should look out for signs of overfitting. Sometimes you have enough data (or as much as you can get anyway) and you still notice overfitting. That's not that uncommon. Turn all knobs you have available for regularisation, hopefully you will find a setting that works. If you are not using pretrained embeddings, this is something you should give priority to: the word embedding matrix is easily the largest model component in your architecture, if it is being trained from scratch, chances are it's a prime contributor to overfitting. (Pretrained embeddings matrices are trained on vast corpora for a reason!)
+# **Overfitting.** Related to data size, you should look out for signs of overfitting. Sometimes you have enough data (or as much as you can get anyway) and you still notice overfitting. That's common. Turn all knobs you have available for regularisation, hopefully you will find a setting that works. If you are not using pretrained embeddings, this is something you should give priority to: the word embedding matrix is easily the largest model component in your architecture, if it is being trained from scratch, chances are it's a prime contributor to overfitting. (Pretrained embeddings matrices are trained on vast corpora for a reason!)
 #
 # You might be a bit upset that you have to investigate so many design choices, which are controlled by knobs that are not updated by your optimiser. Well, that's reality. While DL has made remarkable progress in optimisation of continuous loss functions, optimisation of design choices are typically completely outside the reach of DL. Bayesian optimisation and neural architecture search are entire disciplines dedicated to that, but they are outside the scope of this course (we name them here just in case you are interested and in need of it in future projects). 
 
@@ -1341,14 +1402,14 @@ print(f"Validation accuracy: {best_epoch_metrics['val_metrics']['accuracy']}")
 #
 # Again, cross validation is mainly a tool for _research_. You use it in order to better characterise the merits of your various design choices. It should help you make decisions. If, in addition to making decision, you are actually tasked with deploying any one system, you are then free to take your decisions to some production setting where, for example, you might use all of the available training data (rather than splitting it into folds), now equipped with the design choices you made using your cross validation experiments. You might still need multiple runs, esp if you noticed that your training is highly sensitivity to initial random conditions. If so, at the end, you would combine a few multiple runs (each using the full training data), for example, using the kinds of ideas we discussed at the end of T1. 
 
-# %% jupyter={"outputs_hidden": true, "source_hidden": true}
+# %%
 from collections import OrderedDict
 my_classifiers = OrderedDict()
 
 # %% [markdown]
 # Continuous BoW model:
 
-# %% jupyter={"outputs_hidden": true, "source_hidden": true}
+# %%
 # %%time
 my_classifiers['embed-and-pool'] = []
 for run, seed in enumerate(my_seeds):   # about 20 minutes for a full run (with 5 folds) 
@@ -1371,7 +1432,7 @@ for run, seed in enumerate(my_seeds):   # about 20 minutes for a full run (with 
 # %% [markdown]
 # Recurrent encoder model:
 
-# %% jupyter={"outputs_hidden": true, "source_hidden": true}
+# %%
 # %%time
 my_classifiers['lstm'] = []
 for run, seed in enumerate(my_seeds):   # about 20 minutes for a full run (with 5 folds) 
@@ -1391,15 +1452,12 @@ for run, seed in enumerate(my_seeds):   # about 20 minutes for a full run (with 
         )
     )
 
-# %% jupyter={"outputs_hidden": true, "source_hidden": true}
-### 
-
 # %% [markdown]
 # As always, you should make use of as much information as you can gather. Always prioritise having multiple folds and multiple runs.  If you cannot afford many runs and many folds and a large combinatorial space of hyperparameters (most of us cannot), try and structure your search a bit. Using intuition, literature, talk to TAs and colleagues, and try to prioritise the search somewhat. Mostly, structure the search a bit, so you don't exhaust the combinatorial space. If you are varying a dimension such as _encoder type_ you don't necessarily need to vary it at the same time that you vary _hidden size_. By structuring the search like that, you then get to invest into multiple folds and runs to substantiate a more consequential decision. 
 #
 # At any rate, however you structure this, don't then throw all the information away by tabulating averages. You do yourself a favour by always appreciating experimental uncertainty rather than turning away from it. Oftentimes, you don't need fancy statistics for this, basic plotting skills go a long way. 
 
-# %% jupyter={"outputs_hidden": true, "source_hidden": true}
+# %%
 part1.analysis.plot_box_and_points(part1.analysis.make_data_frame(my_classifiers))
 
 # %% [markdown]
@@ -1416,15 +1474,15 @@ part1.analysis.plot_box_and_points(part1.analysis.make_data_frame(my_classifiers
 # ## Analysis
 
 # %% [markdown]
-# We often turn to recurrent encoders because we believe the task is complex and requires better linguistic understanding. Sometimes we suspect a certain aspect of an input (its complexity, use of rare words, etc) is predictive of errors, or the distinguishing factor to explain the failure or success of one or another design. 
+# We often turn to recurrent encoders because we believe the task is complex and requires better linguistic understanding. Sometimes **we suspect a certain aspect of an input** (its complexity, use of rare words, etc) is predictive of errors, or the distinguishing factor to explain the failure or success of one or another design. 
 #
 # There are various ways to go about analysing our systems, their errors, and the kinds of properties we think our inputs exhibit. We would like you to gain some practical experience with it. 
 #
-# One tool that is to use a dataset for analysis (something like a devtest set) and analyse inputs (in some feature space) in relation to a model's ability to predict the label correctly. A basic tool for that is a regression model. 
+# One tool that is to **use a dataset for analysis** (something like a devtest set) and analyse inputs (in some feature space) in relation to a model's ability to predict the label correctly. A basic tool for that is a regression model. 
 #
-# Suppose you collect some features of the input which are suggestive of their difficulty: length, presence of rare words, syntactic complexity (if you have a definition for it), a style flag (eg, formal, informal), information about its provenance (eg, newswire, social media, blogs), etc. A logistic regressor from this feature space to a correctness flag can help you characterse the relevance of each of these dimensions in explaining your model's accuracy. This is not bullet proof, but it's a useful methodology. 
+# Suppose you collect some features of the input which are suggestive of their difficulty: length, presence of rare words, syntactic complexity (if you have a definition for it), a style flag (eg, formal, informal), information about its provenance (eg, newswire, social media, blogs), etc. A logistic regressor from this feature space to a correctness flag can help you characterse the relevance of each of these dimensions in **explaining your model's accuracy**. This is not bullet proof, but it's a useful methodology. 
 #
-# There are various techniques for logist regression that are useful here. You can count sklearn LogisticRegressor, for example. It is helpful however to characterise the relevance of a feature as a statistical trend, rather than a fixed weight. Some regressors will offer you the ability to do what in ML is often called _automatic relevance determination_. This is inspired by Bayesian statistics. Typically, the regressor has a Laplace prior (or similar) for the weights of the features, encouraging them to be 0, unless sufficient evidence to the contrary can be gathered from the data. Sklearn offers you something very close to that, with `LogisticRegression(solver='liblinear', penalty='l1')`.
+# There are various techniques for logistic regression that are useful here. You can count sklearn LogisticRegressor, for example. It is helpful however to characterise the relevance of a feature as a statistical trend, rather than a fixed weight. Some regressors will offer you the ability to do what in ML is often called _automatic relevance determination_. This is inspired by Bayesian statistics. Typically, the regressor has a Laplace prior (or similar) for the weights of the features, encouraging them to be 0, **unless sufficient evidence** to the contrary can be gathered from the data. Sklearn offers you something very close to that, with `LogisticRegression(solver='liblinear', penalty='l1')`.
 #
 # In the rest of this tutorial we use a very shallow, very basic Bayesian model, not because it's the last word in this kind of analysis, but to give you an opportunity to work with a Bayesian model, and, if you like, to give you a chance to learn from the code we share. Learning to design a Bayesian model, implement in python, and to overcome computational challenges are skills that we cannot really develop in this course. So, you get to choose how much you want to dig in this direction. 
 #
@@ -1438,34 +1496,34 @@ part1.analysis.plot_box_and_points(part1.analysis.make_data_frame(my_classifiers
 #
 # Here for an embed-and-pool model:
 
-# %% jupyter={"outputs_hidden": true, "source_hidden": true}
+# %%
 em00 = part2.experiment.load(f"results/embed-and-pool/seed-0/fold-0/model", trained_emb_model)
 
-# %% jupyter={"outputs_hidden": true, "source_hidden": true}
+# %%
 em00_dt_logprobs = part2.experiment.predict_logprobs(em00, tokenizer_for_bow, [text for text, label in my_test_sets[0]['devtest']], 64, 'cpu')
 em00_dt_logprobs.shape
 
-# %% jupyter={"outputs_hidden": true, "source_hidden": true}
+# %%
 from sklearn.metrics import classification_report
 
-# %% jupyter={"outputs_hidden": true, "source_hidden": true}
+# %%
 print(classification_report([label for text, label in my_test_sets[0]['devtest']], np.argmax(em00_dt_logprobs, -1), target_names=agnews_outcome_space.names))
 
 # %% [markdown]
 # And here for a recurrent model:
 
-# %% jupyter={"outputs_hidden": true, "source_hidden": true}
+# %%
 rm00 = part2.experiment.load(f"results/lstm/seed-0/fold-0/model", trained_emb_model)
 rm00_dt_logprobs = part2.experiment.predict_logprobs(em00, tokenizer_for_rnn, [text for text, label in my_test_sets[0]['devtest']], 64, 'cpu')
 rm00_dt_logprobs.shape
 
-# %% jupyter={"outputs_hidden": true, "source_hidden": true}
+# %%
 print(classification_report([label for text, label in my_test_sets[0]['devtest']], np.argmax(rm00_dt_logprobs, -1), target_names=agnews_outcome_space.names))
 
 # %% [markdown]
 # Here we describe the devtest inputs in a basic feature space and assess correctness, we package it all in a pandas data frame, so it's easy to interoperate with sklearn and/or our BDA model.
 
-# %% jupyter={"outputs_hidden": true, "source_hidden": true}
+# %%
 # we will be using textstat as a way to otain some descriptive features of text; 
 # we encourage you to look for things that are meaningful to your own task/dataset
 # this is just to demo the kind of thing you can do 
@@ -1564,7 +1622,7 @@ df
 #
 # Below, we show how to "fit" the model via MCMC. For features we use the concatenation of a 4-dimensional one-hot encoding of the predicted label (not the observed label, the predicted one) and a 4-dimensional vector of continuous features from textstat. The implementation should be fine with many more features, but, if you have soooo many features that this is prohibitively slow, we recommend you to turn to sklearn LogisticRegression instead (as efficient BDA requires more time and more technical knowledge than we can cover in this course).
 
-# %% jupyter={"outputs_hidden": true}
+# %%
 # Run with your inputs.
 mcmc = part2.analysis.fit_bda_model(
     num_systems=len(systems), 
@@ -1593,7 +1651,7 @@ mcmc.print_summary()
 # * Also, the report below would sould 0 (or very few) divergences.
 #
 
-# %% jupyter={"outputs_hidden": true, "source_hidden": true}
+# %%
 posterior = mcmc.get_samples()
 print("Weight samples:", posterior["w"].shape)
 print("System shift samples:", posterior["sys_shift"].shape)
@@ -1602,7 +1660,7 @@ print("Divergences:", int(mcmc.get_extra_fields()["diverging"].sum()))
 # %% [markdown]
 # It is relatively easy to get interesting plots using arviz. We have some helper code to package the MCMC output as the kind of data frame arviz likes:
 
-# %% jupyter={"outputs_hidden": true, "source_hidden": true}
+# %%
 posterior_data = part2.analysis.posterior_to_arviz(
     mcmc,
     # you need only name the systems
@@ -1614,10 +1672,10 @@ posterior_data = part2.analysis.posterior_to_arviz(
 # %% [markdown]
 # Then we can view the posterior distribution over system shift parameters: these are scalars that capture a system's tendency to push the probability of correctness higher or lower. It's not necessary super easy to interpret this number, because this parameters affects a logit (that is, the correctness probability is obtained after combining other quantities and applying sigmoid), but higher positive values indicate better systems.
 
-# %% jupyter={"outputs_hidden": true, "source_hidden": true}
+# %%
 az_stats_params = {'point_estimate': 'median', 'ci_kind': 'hdi', 'ci_probs': (0.5, 0.95)}
 
-# %% jupyter={"outputs_hidden": true, "source_hidden": true}
+# %%
 az.plot_forest(
     posterior_data, 
     var_names=['sys_shift'],    
@@ -1628,7 +1686,7 @@ az.plot_forest(
 # %% [markdown]
 # It's easier to appreciate posterior accuracy. This will not differ much from what you saw with `plot_box_and_points`:
 
-# %% jupyter={"outputs_hidden": true, "source_hidden": true}
+# %%
 az.plot_forest(
     posterior_data, 
     var_names=['accuracy'],    
@@ -1639,7 +1697,7 @@ az.plot_forest(
 # %% [markdown]
 # And the most interesting thing this model offers, like any other linear model, is a view of the importance of the different features:
 
-# %% jupyter={"outputs_hidden": true, "source_hidden": true}
+# %%
 az.plot_forest(
     posterior_data, 
     var_names=['w'],    
@@ -1656,7 +1714,7 @@ az.plot_forest(
 # %% [markdown]
 # You might find it easier to group the plots differently, putting systems side by side for each feature:
 
-# %% jupyter={"outputs_hidden": true, "source_hidden": true}
+# %%
 # Create a plotting copy containing only w, with reordered dimensions.
 plot_data = posterior_data.copy()
 plot_data["posterior"] = (
