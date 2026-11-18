@@ -944,7 +944,7 @@ torch.allclose(
 )
 
 
-# %% [markdown]
+# %% [markdown] jp-MarkdownHeadingCollapsed=true
 # ### RNN Encoder
 
 # %% [markdown]
@@ -984,7 +984,7 @@ torch.allclose(
 #
 # **Suggested exercise:** complete the code below and compare your implementation to ours.
 
-# %% jupyter={"outputs_hidden": true, "source_hidden": true}
+# %%
 class RNNEncoder(nn.Module):
     def __init__(self, hidden_size, embedding_matrix, padding_idx=0, freeze_embeddings=True):
         """        
@@ -1030,15 +1030,17 @@ class RNNEncoder(nn.Module):
         embeddings = self.embedding(x)  # (batch_size, max_len, emb_dim)
         # initial state
         # zeros on the same device and with the same dtype as embeddings.        
-        h = torch.zeros(x.shape[:-1] + (self.hidden_size,), dtype=embeddings.dtype, device=embeddings.device)
+        h = torch.zeros(x.shape[:-1] + (self.hidden_size,), dtype=embeddings.dtype, device=embeddings.device) # (batch_size, hidden_size)
+        max_len = x.shape[-1]
+        for l in range(max_len):
+            e_l = embeddings[...,l,:]
+            h_cand = self.elman_net(torch.cat([e_l,h], dim=-1))
+            mask = x[...,l].ne(self.pad_idx).unsqueeze(-1) # (batch, hidden_size)
+            h = torch.where(mask, h_cand, h)
+        return h
 
-        raise NotImplementedError("Do you want to try to code the rest of this method yourself?")
 
-
-# %% [markdown]
-# If you implement it yourself, you can compare yours to ours.
-
-# %% jupyter={"outputs_hidden": true, "source_hidden": true}
+# %%
 def test_rnn_enc(emb_vectors, pad_id, tokenizer):
     with torch.random.fork_rng(devices=[]):
         torch.manual_seed(42)
@@ -1052,7 +1054,7 @@ def test_rnn_enc(emb_vectors, pad_id, tokenizer):
     assert torch.allclose(your_h, our_h)
 
 
-# %% jupyter={"outputs_hidden": true, "source_hidden": true}
+# %%
 try: 
     test_rnn_enc(
         trained_emb_model.vectors, 
@@ -1065,20 +1067,20 @@ except NotImplementedError:
 # %% [markdown]
 # The demo uses our own implementation (which you can compare to yours, if you wrote one):
 
-# %% jupyter={"outputs_hidden": true, "source_hidden": true}
+# %%
 toy_vocab = part2.clslib.Vocabulary(['<pad>', '<unk>', 'man', 'bites', 'dog'], default='<unk>', frozen=True)
 list(toy_vocab.items())
 
-# %% jupyter={"outputs_hidden": true, "source_hidden": true}
+# %%
 toy_tokenizer = part2.clslib.BasicTokenizer(True, False, False, 'english', toy_vocab)
 toy_tokenizer.ids('Dog bites man.')
 
-# %% jupyter={"outputs_hidden": true, "source_hidden": true}
+# %%
 toy_texts = ['man', 'dog', 'man bites', 'dog bites', 'man bites dog', 'dog bites man']
 toy_batch = collate_sequences([toy_tokenizer.ids(text) for text in toy_texts], toy_tokenizer.vocab.index('<pad>'))
 toy_batch
 
-# %% jupyter={"outputs_hidden": true, "source_hidden": true}
+# %%
 # some 3-dimensional embeddings for the words in the toy vocab
 toy_matrix = torch.tensor([[0, 0, 0], [0, 0, 0], [1, 0, 0], [0, 1, 0], [0, 0, 1]], dtype=torch.float32)
 toy_pool_enc = part2.clslib.EmbedAndPoolEncoder(toy_matrix, padding_idx=0, freeze_embeddings=True)
@@ -1088,7 +1090,7 @@ toy_rnn_enc = part2.clslib.RNNEncoder(2, embedding_matrix=toy_matrix, padding_id
 # %% [markdown]
 # Here we compare the two forms of encoding. See the BoW-style effect of _embed and pool_ and how the non-linear composition function of the RNN manages to retain the information the `dog bites man` and `man bites dog` are different sequences.
 
-# %% jupyter={"outputs_hidden": true, "source_hidden": true}
+# %%
 def np_and_round(t, decimals=4):
     return np.round(t.detach().cpu().numpy(), decimals=decimals)
 print(tabulate(list(zip(toy_texts, np_and_round(toy_pool_enc(toy_batch)), np_and_round(toy_rnn_enc(toy_batch)))), headers=['text', 'avg emb', 'rnn']))
@@ -1121,7 +1123,7 @@ toy_lstm_enc(toy_batch)
 # %% jupyter={"outputs_hidden": true, "source_hidden": true}
 # # torch.nn.LSTM?
 
-# %% [markdown]
+# %% [markdown] jp-MarkdownHeadingCollapsed=true
 # ## Softmax Regressor
 
 # %% [markdown]
@@ -1206,7 +1208,7 @@ not torch.allclose(lstm_sr.forward(torch.tensor([tokenizer_for_rnn.ids('dog bite
 # %% [markdown]
 # We are now ready to experiment with these models.
 
-# %% [markdown]
+# %% [markdown] jp-MarkdownHeadingCollapsed=true
 # # Experiment
 
 # %% [markdown]
