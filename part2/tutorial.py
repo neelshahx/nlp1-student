@@ -1424,7 +1424,7 @@ for run, seed in enumerate(my_seeds):   # about 20 minutes for a full run (with 
             enc_kwargs={'freeze_embeddings': True},
             regressor_kwargs={'hidden_size1': 50, 'hidden_size2': 50, 'dropout': 0.5},
             opt_kwargs={'learning_rate': 1e-3, 'weight_decay': 1e-4, 'batch_size': 64, 'num_epochs': 20},    
-            device='cuda', #'cpu'
+            device='cpu', #'cpu'
             save_to=run_folder,        
         )
     )
@@ -1447,7 +1447,7 @@ for run, seed in enumerate(my_seeds):   # about 20 minutes for a full run (with 
             enc_kwargs={'freeze_embeddings': True, 'hidden_size': 20, 'word_dropout': 0.},
             regressor_kwargs={'hidden_size1': 50, 'hidden_size2': 50, 'dropout': 0.1},
             opt_kwargs={'learning_rate': 1e-3, 'weight_decay': 1e-4, 'batch_size': 64, 'num_epochs': 20},    
-            device='cuda', #'cpu'
+            device='cpu', #'cpu'
             save_to=run_folder,        
         )
     )

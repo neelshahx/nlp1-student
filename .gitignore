@@ -6,3 +6,4 @@ __pycache__/
 .DS_Store
 CLAUDE.local.md
 part2/glove.2024.wikigiga.50d.zip
+part2/results
