@@ -1622,6 +1622,17 @@ df
 #
 # Below, we show how to "fit" the model via MCMC. For features we use the concatenation of a 4-dimensional one-hot encoding of the predicted label (not the observed label, the predicted one) and a 4-dimensional vector of continuous features from textstat. The implementation should be fine with many more features, but, if you have soooo many features that this is prohibitively slow, we recommend you to turn to sklearn LogisticRegression instead (as efficient BDA requires more time and more technical knowledge than we can cover in this course).
 
+# %% [raw]
+# y_bow = b + mx = 0+ 2x   <-- this depends more on cue helps
+# y_lstm = b + mx = 0 + 1x <-- this depends less on cue helps
+
+# %% [raw]
+# y= b_phi + b_delta + w x
+#
+# P(phi | f_n, s_n)    <-- how the feature impacts all models (bias)
+# P(delta | f_n, s_n]) <-- how the feature impacts the specific model (bias)
+# P(w | f_n, s_n)      <-- how the feature impacts the specific model (slope)
+
 # %%
 # Run with your inputs.
 mcmc = part2.analysis.fit_bda_model(

@@ -1525,7 +1525,6 @@ for run, seed in enumerate(my_seeds):
 
 part1.analysis.plot_box_and_points(part1.analysis.make_data_frame(my_classifiers))
 
-
 # %% [markdown]
 # Differences are small but they seem noticeable, at least at this level of analysis.
 
@@ -1608,6 +1607,24 @@ part1.analysis.plot_box_and_points(part1.analysis.make_data_frame(my_classifiers
 # Bayesian estimation with this specific model formulation came to be known in machine learning ([Benavoli et al 2017](https://jmlr.org/papers/volume18/16-305/16-305.pdf)) as _Bayesian correlated t-test_. In the opinion of the authors of this tutorial, that is an unfortunate label, for it suggests that there is a _test_ in place; well, there really isn't one (as Benavoli et al explain in section 3 of their article), and our guess is that Benavoli et al named it this way to get those already using NHST to switch camps. A better way to encourage the switch is via reasoning and argumentation, so we encourage you to read the arguments in [section 2.1 of their work](https://jmlr.org/papers/volume18/16-305/16-305.pdf) or in the many links in this section of our tutorial. 
 #
 # Bayesian modelling is transparent and demands knowledge that is generally more accessible than what is needed to understand and judge Frequentist statistics. This probably sounds strange at first, but it is largely true. There are two difficulties facing anyone interested in Bayesian statistics. First, most courses are taught entirely from a frequentist perspective, this means that Bayesian concepts are either not taught or taught with a great deal of mental contortionism. If you are curious, here are some talks that labour this point: [Bayesian Statistics without Frequentist Language](https://www.youtube.com/watch?v=yakg94HyWdE&t=2549s) and [All About that Bayes](https://www.youtube.com/watch?v=eDMGDhyDxuY&t=2029s). Second, Bayesian statistics is, by design, less _automated_ and this then demands some level of statistical thinking and training that many of us did not get. This is not the place to cover such gaps in most people's education, so we will have to delegate the work to a [library call](https://baycomp.readthedocs.io/en/latest/functions.html#baycomp.two_on_single). Please don't take this to mean that frequentist tools are a bad way to automate decision making and that Bayesian tools should be preferred, rather, we think you should not be automating your decisions, and, if you believe you need some statistical inference to support your decision making, then we advise you to take the steps you can to overcome frequentism.
+
+# %%
+model A and model B
+
+mu = acc(model A) - acc(model B)
+
+model A has 5x2 data pts = 5x2 folds (seed is same)
+model B has 5x2 data pts = 5x2 folds (seed is same)
+
+D=10 experiments, not independent
+X ~ MVND(1_D * mu, Sigma_{D x D})
+mu ~ t-dist(nu = how heavy are tails)
+Sigma ~ uniformative wide prior
+
+P(mu_d | data)
+
+equivalen0 +/- 0.5 % (accuracy ROPE)
+
 
 # %% [markdown]
 # Here is how you can use the lib to make some informed decisions:
